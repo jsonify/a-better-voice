@@ -260,3 +260,66 @@ final class PipelineTests: XCTestCase {
         XCTAssertEqual(Waveform.peaks([0.3], buckets: 3).count, 3)
     }
 }
+
+final class AlignmentTests: XCTestCase {
+    func testFindsADelay() {
+        let rate = 16_000.0
+        let (voice, _) = syntheticRecording(sampleRate: rate, seconds: 3, hiss: 0.01)
+        for delay in [0, 7, -12, 400] {
+            let delayed = Alignment.shift(voice, by: -delay) // delayed[i] = voice[i - delay]
+            XCTAssertEqual(Alignment.estimateLag(reference: voice, signal: delayed, sampleRate: rate), delay)
+            let realigned = Alignment.shift(delayed, by: delay)
+            XCTAssertEqual(realigned[20_000], voice[20_000])
+        }
+    }
+
+    func testUnrelatedSignalsGiveZero() {
+        var a = SeededNoise(seed: 11)
+        var b = SeededNoise(seed: 12)
+        let first = (0..<48_000).map { _ in a.next() }
+        let second = (0..<48_000).map { _ in b.next() }
+        XCTAssertEqual(Alignment.estimateLag(reference: first, signal: second, sampleRate: 16_000), 0)
+    }
+
+    func testFit() {
+        XCTAssertEqual(Alignment.fit([1, 2, 3], count: 2), [1, 2])
+        XCTAssertEqual(Alignment.fit([1], count: 3), [1, 0, 0])
+    }
+}
+
+final class VoiceIsolatorTests: XCTestCase {
+    func testPresetsKeepTheAIChoice() {
+        var settings = EnhancementSettings.light
+        settings.voiceIsolation = 0.8
+        let strong = EnhancementPreset.strong.settings(keepingChoicesOf: settings)
+        XCTAssertEqual(strong?.voiceIsolation, 0.8)
+        XCTAssertEqual(EnhancementPreset.matching(settings), .light)
+    }
+
+    #if canImport(AVFoundation)
+    func testResamplerRoundTripKeepsLengthAndLevel() throws {
+        let tone = sine(frequency: 440, amplitude: 0.5, seconds: 1, sampleRate: 44_100)
+        let up = try Resampler.convert(tone, from: 44_100, to: 48_000)
+        XCTAssertEqual(Double(up.count), 48_000, accuracy: 64)
+        XCTAssertEqual(rmsDB(up[4_000..<44_000]), rmsDB(tone[4_000..<40_000]), accuracy: 0.1)
+    }
+
+    func testIsolationRunsOnThisMachine() throws {
+        // Apple's unit ships with macOS 13+ and iOS 16+, but a virtual machine may not offer it.
+        try XCTSkipUnless(VoiceIsolator.isAvailable, "AUSoundIsolation is not available here")
+        let rate = 44_100.0
+        let (mixed, _) = syntheticRecording(sampleRate: rate, seconds: 3, hiss: 0.01)
+        var lastProgress = 0.0
+        let isolated = try VoiceIsolator.process(mixed, sampleRate: rate, mix: 1) { lastProgress = $0 }
+        XCTAssertEqual(isolated.count, mixed.count)
+        XCTAssertFalse(isolated.contains { !$0.isFinite })
+        XCTAssertEqual(lastProgress, 1)
+        print("AI isolation: input \(rmsDB(mixed[...])) dB → output \(rmsDB(isolated[...])) dB RMS")
+
+        var settings = EnhancementSettings.balanced
+        settings.voiceIsolation = 1
+        let result = try VoiceEnhancer.process(mixed, sampleRate: rate, settings: settings)
+        XCTAssertEqual(result.samples.count, mixed.count)
+    }
+    #endif
+}

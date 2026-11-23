@@ -2,6 +2,9 @@ import Foundation
 
 /// What the enhancer does. Every amount runs from 0 (off) to 1 (strongest).
 public struct EnhancementSettings: Equatable, Codable, Sendable {
+    /// On-device AI voice isolation (Apple's machine-learning model): removes changing background sounds, music
+    /// and echo. 0 = off; otherwise how much of the isolated voice to use versus the original.
+    public var voiceIsolation: Float
     /// Removes hiss, hum and room tone learned from the pauses in the recording.
     public var noiseReduction: Float
     /// Removes rumble, handling noise and plosive thumps below about 80 Hz.
@@ -18,7 +21,8 @@ public struct EnhancementSettings: Equatable, Codable, Sendable {
     public var targetLoudness: Float
 
     public init(noiseReduction: Float, rumbleFilter: Bool, clarity: Float, deEss: Float, leveling: Float,
-                normalize: Bool = true, targetLoudness: Float = -16) {
+                normalize: Bool = true, targetLoudness: Float = -16, voiceIsolation: Float = 0) {
+        self.voiceIsolation = voiceIsolation
         self.noiseReduction = noiseReduction
         self.rumbleFilter = rumbleFilter
         self.clarity = clarity
@@ -50,8 +54,9 @@ public enum EnhancementPreset: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// The settings for this preset, keeping the loudness choice of `current`. `nil` for `.custom`.
-    public func settings(keepingLoudnessOf current: EnhancementSettings) -> EnhancementSettings? {
+    /// The settings for this preset, keeping the loudness and AI voice isolation choices of `current`, which the
+    /// presets leave alone. `nil` for `.custom`.
+    public func settings(keepingChoicesOf current: EnhancementSettings) -> EnhancementSettings? {
         var settings: EnhancementSettings
         switch self {
         case .light: settings = .light
@@ -61,13 +66,14 @@ public enum EnhancementPreset: String, CaseIterable, Identifiable, Sendable {
         }
         settings.normalize = current.normalize
         settings.targetLoudness = current.targetLoudness
+        settings.voiceIsolation = current.voiceIsolation
         return settings
     }
 
     /// The preset whose processing matches `settings`, or `.custom`.
     public static func matching(_ settings: EnhancementSettings) -> EnhancementPreset {
         for preset in [EnhancementPreset.light, .balanced, .strong]
-        where preset.settings(keepingLoudnessOf: settings) == settings {
+        where preset.settings(keepingChoicesOf: settings) == settings {
             return preset
         }
         return .custom
@@ -106,7 +112,7 @@ public struct EnhancementResult: Sendable {
 }
 
 /// The voice-enhancement chain:
-/// rumble filter → noise reduction → level to a reference → clarity EQ → de-esser → leveling compressor →
+/// rumble filter → AI voice isolation (optional) → noise reduction → level to a reference → clarity EQ → de-esser → leveling compressor →
 /// loudness normalisation → peak limiter.
 public enum VoiceEnhancer {
     /// Loudness the level-dependent stages (de-esser, compressor) are tuned for.
@@ -139,9 +145,22 @@ public enum VoiceEnhancer {
         try Task.checkCancellation()
         report(0.05)
 
+        var noiseStageStart = 0.05
+        if settings.voiceIsolation > 0 {
+            #if canImport(AVFoundation)
+            x = try VoiceIsolator.process(x, sampleRate: sampleRate, mix: settings.voiceIsolation) {
+                report(0.05 + 0.4 * $0)
+            }
+            noiseStageStart = 0.45
+            #else
+            throw VoiceIsolationError.unavailable
+            #endif
+        }
+
         if settings.noiseReduction > 0 {
             let reducer = NoiseReducer(amount: min(1, settings.noiseReduction))
-            x = try reducer.process(x, sampleRate: sampleRate) { report(0.05 + 0.65 * $0) }
+            let span = 0.7 - noiseStageStart
+            x = try reducer.process(x, sampleRate: sampleRate) { report(noiseStageStart + span * $0) }
         }
         report(0.7)
 

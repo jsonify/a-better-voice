@@ -18,6 +18,12 @@ the app runs this chain on it:
    and −23 are one tap away), measured to ITU-R BS.1770 / EBU R128.
 7. **Peak limiter**: keeps peaks under −1.5 dBFS so nothing clips, even after AAC encoding.
 
+Optionally, switch on **AI voice isolation** to also remove changing background sounds (traffic, keyboards, other
+people), music and room echo. It uses Apple's on-device machine-learning voice isolation, the same technology as the
+"Voice Isolation" microphone mode, running on the Neural Engine. There's no account, no per-use cost, and nothing
+leaves the device. **Isolation strength** blends some of the original back in for a more natural sound. Needs
+iOS 17 / macOS 14 (this app's minimum); the switch is greyed out on any device without it.
+
 Pick **Light**, **Balanced** or **Strong**, or open **Fine-tune** to set each stage. The result updates a moment after
 each change. Switch between **Original** and **Enhanced** while it plays to compare at the same spot. Save as M4A
 (AAC) or 24-bit WAV, or share it straight from the app.
@@ -60,7 +66,7 @@ Re-run `xcodegen generate` after adding or removing files; the `.xcodeproj` is n
 ```sh
 cd Packages/VoiceEnhancerCore
 swift test
-swift run -c release voice-enhance input.m4a output.m4a [light|balanced|strong] [target LUFS]
+swift run -c release voice-enhance [--ai] input.m4a output.m4a [light|balanced|strong] [target LUFS]
 ```
 
 The command-line tool prints the loudness before and after, and is handy for batch work.

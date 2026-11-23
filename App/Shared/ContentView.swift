@@ -220,6 +220,8 @@ struct EditorView: View {
             }
             .disabled(!model.settings.normalize)
 
+            AIIsolationControl(settings: $model.settings, isAvailable: model.isVoiceIsolationAvailable)
+
             DisclosureGroup("Fine-tune", isExpanded: $showsDetails) {
                 VStack(alignment: .leading, spacing: 14) {
                     AmountSlider(title: "Noise reduction", detail: "Hiss, hum and room tone",
@@ -267,6 +269,43 @@ struct EditorView: View {
                 .disabled(model.phase != .ready || model.isPreparingExport)
             }
         }
+    }
+}
+
+/// Switch and strength for Apple's on-device AI voice isolation.
+struct AIIsolationControl: View {
+    @Binding var settings: EnhancementSettings
+    let isAvailable: Bool
+
+    private var isOn: Binding<Bool> {
+        Binding(
+            get: { settings.voiceIsolation > 0 },
+            set: { settings.voiceIsolation = $0 ? 1 : 0 }
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: isOn) {
+                Label("AI voice isolation", systemImage: "sparkles")
+            }
+            .disabled(!isAvailable)
+            Text(isAvailable
+                 ? "Removes background sounds, music and echo using Apple’s on-device AI. Nothing is uploaded."
+                 : "This device doesn’t offer Apple’s on-device voice isolation.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if settings.voiceIsolation > 0 {
+                AmountSlider(title: "Isolation strength",
+                             detail: "Lower it to keep some of the room for a more natural sound",
+                             value: Binding(
+                                 get: { settings.voiceIsolation },
+                                 set: { settings.voiceIsolation = max(0.1, $0) }
+                             ))
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.accentColor.opacity(0.08)))
     }
 }
 

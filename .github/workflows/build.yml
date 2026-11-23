@@ -34,6 +34,16 @@ jobs:
           swift run -c release voice-enhance "$RUNNER_TEMP/in.wav" "$RUNNER_TEMP/out.m4a" balanced
           swift run -c release voice-enhance "$RUNNER_TEMP/in.wav" "$RUNNER_TEMP/out.wav" strong -14
           afinfo "$RUNNER_TEMP/out.m4a" | head -5
+      - name: Try AI voice isolation on synthesized speech
+        working-directory: Packages/VoiceEnhancerCore
+        run: |
+          swift run -c release voice-enhance --check-ai
+          say -o "$RUNNER_TEMP/speech.aiff" "Welcome back to the show. Today we are testing voice isolation on a Mac."
+          if swift run -c release voice-enhance --check-ai | grep -q "not available"; then
+            echo "Skipping: this runner has no AUSoundIsolation unit."
+          else
+            swift run -c release voice-enhance --ai "$RUNNER_TEMP/speech.aiff" "$RUNNER_TEMP/speech-ai.m4a" balanced
+          fi
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate the project

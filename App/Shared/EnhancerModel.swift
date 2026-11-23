@@ -44,10 +44,13 @@ final class EnhancerModel: ObservableObject {
 
     var hasRecording: Bool { original != nil }
 
+    /// Whether Apple's on-device AI voice isolation exists on this device.
+    let isVoiceIsolationAvailable = VoiceIsolator.isAvailable
+
     var preset: EnhancementPreset {
         get { EnhancementPreset.matching(settings) }
         set {
-            if let presetSettings = newValue.settings(keepingLoudnessOf: settings) { settings = presetSettings }
+            if let presetSettings = newValue.settings(keepingChoicesOf: settings) { settings = presetSettings }
         }
     }
 
