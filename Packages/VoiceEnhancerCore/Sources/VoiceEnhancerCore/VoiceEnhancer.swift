@@ -118,7 +118,12 @@ public enum VoiceEnhancer {
     /// `progress` receives values from 0 to 1.
     public static func process(_ samples: [Float], sampleRate: Double, settings: EnhancementSettings,
                                progress: ((Double) -> Void)? = nil) throws -> EnhancementResult {
-        let report: (Double) -> Void = { progress?(min(1, max(0, $0))) }
+        var reported = 0.0
+        func report(_ value: Double) {
+            // Never step backwards, even by a rounding error.
+            reported = min(1, max(reported, value))
+            progress?(reported)
+        }
         let inputLoudness = Loudness.integrated(samples, sampleRate: sampleRate)
         let inputPeak = Loudness.peakDB(samples)
         var x = samples

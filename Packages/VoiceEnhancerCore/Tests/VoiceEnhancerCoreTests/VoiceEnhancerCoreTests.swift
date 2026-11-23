@@ -131,7 +131,10 @@ final class LoudnessTests: XCTestCase {
     func testGatingIgnoresSilentStretches() throws {
         let tone = sine(frequency: 997, amplitude: 0.1, seconds: 2, sampleRate: 48_000)
         let withSilence = tone + [Float](repeating: 0, count: 96_000)
-        XCTAssertEqual(try XCTUnwrap(Loudness.integrated(withSilence, sampleRate: 48_000)), -20, accuracy: 0.2)
+        // The silent blocks are gated out. Of the 20 blocks that pass, 17 are all tone and the three straddling
+        // the end hold ¾, ½ and ¼ of it, so the mean power is 18.5 / 20 of the tone's.
+        let expected = -20 + 10 * log10(Float(18.5 / 20))
+        XCTAssertEqual(try XCTUnwrap(Loudness.integrated(withSilence, sampleRate: 48_000)), expected, accuracy: 0.05)
     }
 }
 
