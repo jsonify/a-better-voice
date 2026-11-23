@@ -1,0 +1,50 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      # Newer compilers add warnings the runner's default Xcode doesn't report.
+      - name: Select newest Xcode
+        run: |
+          NEWEST=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          sudo xcode-select -s "$NEWEST"
+          xcodebuild -version
+          swift --version
+      - name: Test the audio engine
+        working-directory: Packages/VoiceEnhancerCore
+        run: swift test -Xswiftc -warnings-as-errors
+      - name: Try the command-line tool on a generated recording
+        working-directory: Packages/VoiceEnhancerCore
+        run: |
+          # A system sound as a quick end-to-end check of reading, enhancing and writing real files.
+          afconvert -f WAVE -d LEI16@48000 /System/Library/Sounds/Submarine.aiff "$RUNNER_TEMP/in.wav"
+          swift run -c release voice-enhance "$RUNNER_TEMP/in.wav" "$RUNNER_TEMP/out.m4a" balanced
+          swift run -c release voice-enhance "$RUNNER_TEMP/in.wav" "$RUNNER_TEMP/out.wav" strong -14
+          afinfo "$RUNNER_TEMP/out.m4a" | head -5
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate the project
+        run: xcodegen generate
+      - name: Build for macOS
+        run: |
+          xcodebuild build -project ABetterVoice.xcodeproj -scheme ABetterVoice-macOS \
+            -destination 'generic/platform=macOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
+      - name: Build for the iOS Simulator
+        run: |
+          xcodebuild build -project ABetterVoice.xcodeproj -scheme ABetterVoice-iOS \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
